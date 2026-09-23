@@ -80,6 +80,64 @@ final class FMP4WriterTests: XCTestCase {
         }
     }
 
+    /// 用 AVFoundation 打开一段字节，返回播放器视角下的事实。整个过程不抛错本身就是"不报错"的证据。
+    private struct Probe { let isPlayable: Bool; let trackEnabled: Bool?; let duration: Double; let decodedFrames: Int }
+
+    private func probe(_ bytes: [UInt8]) async throws -> Probe {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data(bytes).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let asset = AVURLAsset(url: url)
+        let isPlayable = try await asset.load(.isPlayable)
+        let duration = try await asset.load(.duration).seconds
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let track = videoTracks.first else {
+            return Probe(isPlayable: isPlayable, trackEnabled: nil, duration: duration, decodedFrames: 0)
+        }
+        let enabled = try await track.load(.isEnabled)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        ])
+        reader.add(output)
+        var frames = 0
+        if reader.startReading() {
+            while let sampleBuffer = output.copyNextSampleBuffer() {
+                if CMSampleBufferGetImageBuffer(sampleBuffer) != nil { frames += 1 }
+            }
+        }
+        return Probe(isPlayable: isPlayable, trackEnabled: enabled, duration: duration, decodedFrames: frames)
+    }
+
+    func test_tkhd的flags填0时轨道存在但被标为不启用_播不出来且不报错() async throws {
+        let original = try writtenFile()
+        let tkhd = try XCTUnwrap(try MP4Inspector.parse(original).find("moov", "trak", "tkhd"))
+        var patched = original
+        patched.replaceSubrange(tkhd.offset + 9..<tkhd.offset + 12, with: [0, 0, 0])   // 3 字节 flags 清零
+
+        let control = try await probe(original)
+        XCTAssertTrue(control.isPlayable)                  // 对照组：flags = 7 时一切正常
+        XCTAssertEqual(control.trackEnabled, true)
+
+        let broken = try await probe(patched)              // 能走到这里，说明全程没有抛错
+        XCTAssertEqual(broken.trackEnabled, false)         // 轨道还在，但被标记为不启用
+        XCTAssertFalse(broken.isPlayable)                  // 播不出来
+    }
+
+    func test_没有mvex时解析器不去找moof_文件被当成0帧且不报错() async throws {
+        let original = try writtenFile()
+        let mvex = try XCTUnwrap(try MP4Inspector.parse(original).find("moov", "mvex"))
+        var patched = original
+        patched.replaceSubrange(mvex.offset + 4..<mvex.offset + 8, with: Array("free".utf8))   // mvex → free，解析器会跳过
+
+        let control = try await probe(original)
+        XCTAssertEqual(control.decodedFrames, 30)           // 对照组
+
+        let broken = try await probe(patched)              // 能走到这里，说明全程没有抛错
+        XCTAssertEqual(broken.duration, 0)
+        XCTAssertEqual(broken.decodedFrames, 0)            // 原文："这个视频 0 帧——不报错，就是播不出东西"
+    }
+
     /// 把 fixture 重新编码成字节（可丢掉前几帧），用来构造非法输入
     private static func encode(_ fixture: H264Fixture, dropFirst: Int) -> [UInt8] {
         var w = ByteWriter()

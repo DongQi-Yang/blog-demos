@@ -19,6 +19,8 @@ test_单轨能播加上第二条轨就坏_tfhd必须设default_base_is_moof
 test_最后一个sample的duration在写它时还不知道_滞后一帧后每个duration都是真实值
 test_写法B逐个换算duration_30fps录10分钟最坏偏差9000tick即0点1秒
 test_产出的fMP4能被AVFoundation完整解码30帧且时长1秒
+test_tkhd的flags填0时轨道存在但被标为不启用_播不出来且不报错
+test_没有mvex时解析器不去找moof_文件被当成0帧且不报错
 …
 ```
 
@@ -33,7 +35,21 @@ test_产出的fMP4能被AVFoundation完整解码30帧且时长1秒
 **A2 原文第三节**说：`stbl` 里的四张空索引表（`stts`/`stsc`/`stsz`/`stco`）省掉之后，"AVFoundation 会直接拒绝"。
 **2026-09 在 macOS 26.5.2 上实测**：删掉这四张表后，`AVURLAsset.isPlayable`、`AVAssetImageGenerator`、`AVAssetReader`（30 帧全部解码）和 passthrough 导出**全部成功**。原文当时的观察对象是 iOS 相册，比 macOS 上的 AVFoundation 更严格。
 
-所以这个仓库**没有**写"AVFoundation 拒绝缺表文件"的测试——那会是一条撒谎的测试。结构完整性改由库内的严格读者 [`MP4Inspector`](Sources/FMP4Muxer/MP4Inspector.swift) 按 ISO/IEC 14496-12 的 "exactly one" 规则校验。原文的工程建议（空表必须写）不变：规范要求它，而且你不知道你的文件最终会被哪个最严格的读者打开。
+**A2 原文第三节**还说：`ftyp` 不要写 `qt  `，否则按 QuickTime 语义读"就是损坏"。
+**同一环境实测**：把主品牌改成 `qt  ` 后，文件照样可播、30 帧全部解码。这一条同样不复现。
+
+所以这个仓库**没有**写"AVFoundation 拒绝缺表文件 / 拒绝 qt 品牌"的测试——那会是撒谎的测试。结构完整性改由库内的严格读者 [`MP4Inspector`](Sources/FMP4Muxer/MP4Inspector.swift) 按 ISO/IEC 14496-12 的 "exactly one" 规则校验。原文的工程建议不变：空表必须写、品牌按 ISO 声明——规范要求它，而且你不知道你的文件最终会被哪个最严格的读者打开。
+
+反过来，原文另外两条关于播放器行为的论断**在同一环境复现成立**，已写成 AVFoundation 测试：`tkhd` 的 flags 填 0，轨道还在但被标为不启用、播不出来且不报错；删掉 `mvex`，解析器不去找 `moof`，文件被当成 0 帧且不报错。
+
+| 原文论断 | macOS 26.5.2 实测 | 仓库里怎么处理 |
+|---|---|---|
+| 缺空索引表 → AVFoundation 拒绝 | 不复现（照常播放） | 只做结构校验，不写播放器测试 |
+| 主品牌写 `qt  ` → 损坏 | 不复现（照常播放） | 只断言主品牌是 `iso5` |
+| `tkhd` flags 填 0 → 黑屏且不报错 | 复现 | AVFoundation 测试 |
+| 没有 `mvex` → 0 帧且不报错 | 复现 | AVFoundation 测试 |
+
+还有一处是**原文示例代码**的问题：第四节 `finish()` 用 `ready.last?.duration` 兜底最后一帧，但 `flush()` 刚把 `ready` 取空时它会退化成 1。这里的实现改用"最后一个已知的真实 duration"，并由 `test_正常结束时最后一帧用最后一个已知duration兜底_即使之前已经flush过` 锁住。
 
 ## 测试码流
 

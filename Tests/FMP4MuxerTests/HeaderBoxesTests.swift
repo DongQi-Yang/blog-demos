@@ -8,7 +8,7 @@ final class HeaderBoxesTests: XCTestCase {
         try MP4Inspector.parse(HeaderBoxes.ftyp() + HeaderBoxes.moov(video: config))
     }
 
-    func test_ftyp主品牌是iso5因为default_base_is_moof语义从iso5才有_且不能写qt() throws {
+    func test_ftyp主品牌是iso5且兼容品牌不含qt() throws {
         let ftyp = try XCTUnwrap(try parsedHeader().find("ftyp"))
         XCTAssertEqual(String(decoding: ftyp.payload[0..<4], as: UTF8.self), "iso5")
         let compatible = stride(from: 8, to: ftyp.payload.count, by: 4)
@@ -22,7 +22,7 @@ final class HeaderBoxesTests: XCTestCase {
         XCTAssertEqual(MP4Inspector.missingSampleTableBoxes(in: stbl), [])
     }
 
-    func test_tkhd的flags必须是7_填0轨道存在但不启用会黑屏无声且不报错() throws {
+    func test_tkhd的flags写成7即enabled_in_movie_in_preview() throws {
         let tkhd = try XCTUnwrap(try parsedHeader().find("moov", "trak", "tkhd"))
         XCTAssertEqual(tkhd.fullBoxHeader?.flags, 0x000007)
     }
@@ -44,7 +44,7 @@ final class HeaderBoxesTests: XCTestCase {
         XCTAssertEqual(TestSupport.u32(mdhd.payload, at: 16), 0)
     }
 
-    func test_有mvex和trex解析器才会去找moof() throws {
+    func test_moov里带mvex且trex指向本轨道() throws {
         let trex = try XCTUnwrap(try parsedHeader().find("moov", "mvex", "trex"))
         XCTAssertEqual(TestSupport.u32(trex.payload, at: 4), 1)          // track_ID
     }

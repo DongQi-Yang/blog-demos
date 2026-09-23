@@ -37,16 +37,22 @@ public enum MP4Inspector {
         case badBoxSize(offset: Int, size: Int)
         case missingBox(String)
         case unsupported(String)
+        /// 数据偏移无法表示成文件内的合法位置（超出 Int、加法溢出或为负）
+        case badDataOffset(trackID: UInt32)
     }
 
     /// 需要递归进入的容器 box（本 demo 只写这些）
     static let containers: Set<String> = ["moov", "trak", "mdia", "minf", "dinf", "stbl", "mvex", "moof", "traf"]
 
+    /// 最大嵌套层数。本 demo 实际最深 5 层（moov/trak/mdia/minf/stbl）；
+    /// 不设上限的话，每层 8 字节的恶意输入就能用递归把进程栈打爆。
+    static let maxDepth = 16
+
     public static func parse(_ bytes: [UInt8]) throws -> [MP4Box] {
-        try parse(bytes, from: 0, to: bytes.count)
+        try parse(bytes, from: 0, to: bytes.count, depth: 0)
     }
 
-    static func parse(_ bytes: [UInt8], from start: Int, to end: Int) throws -> [MP4Box] {
+    static func parse(_ bytes: [UInt8], from start: Int, to end: Int, depth: Int) throws -> [MP4Box] {
         var boxes: [MP4Box] = []
         var cursor = start
         while cursor < end {
@@ -57,8 +63,10 @@ public enum MP4Inspector {
             let type = String(decoding: bytes[cursor + 4..<cursor + 8], as: UTF8.self)
             let bodyStart = cursor + 8, boxEnd = cursor + size
             if containers.contains(type) {
+                guard depth < maxDepth else { throw InspectError.unsupported("box 嵌套超过 \(maxDepth) 层") }
                 boxes.append(MP4Box(type: type, offset: cursor, size: size,
-                                    children: try parse(bytes, from: bodyStart, to: boxEnd), payload: []))
+                                    children: try parse(bytes, from: bodyStart, to: boxEnd, depth: depth + 1),
+                                    payload: []))
             } else {
                 boxes.append(MP4Box(type: type, offset: cursor, size: size,
                                     children: [], payload: Array(bytes[bodyStart..<boxEnd])))
@@ -112,7 +120,10 @@ extension MP4Inspector {
             let trackID = try tfhdReader.u32()
             let base: Int
             if tfhdHeader.flags & 0x000001 != 0 {
-                base = Int(try tfhdReader.u64())
+                guard let explicit = Int(exactly: try tfhdReader.u64()) else {
+                    throw InspectError.badDataOffset(trackID: trackID)
+                }
+                base = explicit
             } else if tfhdHeader.flags & 0x020000 != 0 {
                 base = moof.offset
             } else {
@@ -131,9 +142,13 @@ extension MP4Inspector {
                 if trunHeader.flags & 0x000800 != 0 { _ = try trunReader.u32() }      // composition time offset
             }
 
-            let start = base + dataOffset
+            // 偏移全部来自文件：任何一步溢出或落到负数都是坏文件，要报错而不是 trap
+            let (start, startOverflow) = base.addingReportingOverflow(dataOffset)
+            guard !startOverflow, start >= 0 else { throw InspectError.badDataOffset(trackID: trackID) }
+            let (end, endOverflow) = start.addingReportingOverflow(length)
+            guard !endOverflow else { throw InspectError.badDataOffset(trackID: trackID) }
             result.append(TrackFragmentData(trackID: trackID, dataStart: start, dataLength: length))
-            previousEnd = start + length
+            previousEnd = end
         }
         return result
     }
