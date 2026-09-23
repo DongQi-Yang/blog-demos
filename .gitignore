@@ -7,6 +7,11 @@ Package.resolved
 # macOS
 .DS_Store
 
-# 覆盖全局 ~/.gitignore_global 里的 `docs` 规则：
-# 本仓库的 spec 与产物就放在 docs/ 下，必须入库
+# 覆盖全局 ~/.gitignore_global 里的 docs / tests / scripts 规则（macOS 大小写不敏感，Tests/Scripts 也被命中）：
+# 本仓库的 spec、产物、测试与 fixture 生成脚本都必须入库
 !docs/
+!Tests/
+!Scripts/
+
+# superpowers 执行工作区（ledger/brief，非交付物）
+.superpowers/
