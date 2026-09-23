@@ -74,7 +74,7 @@ blog-demos/
 
 | Demo | 对应文章 | 首条论断测试（名字即论断） |
 |---|---|---|
-| `FMP4Muxer` | [A2 手写 fMP4 muxer](https://juejin.cn/post/7683935700154056713) | `test_单轨正常双轨就坏_tfhd必须显式写base_data_offset()` |
+| `FMP4Muxer` | [A2 手写 fMP4 muxer](https://juejin.cn/post/7683935700154056713) | `test_单轨能播加上第二条轨就坏_tfhd必须设default_base_is_moof()` |
 | `FilterGraph` | [B1 滤镜图内核](https://juejin.cn/post/7682406523184316454) | `test_成环的连接必须被拒绝而不是在渲染时栈溢出()` |
 | `KeyframeTimeline` | [B3 关键帧动画系统](https://juejin.cn/spost/7688246386425118758) | `test_裁剪后区间外关键帧被删除且保留帧的局部时间按speed重算()` |
 | `MaterialProtocol` | [B2 特效素材协议](https://juejin.cn/post/7688180809025110067) | `test_曲线采样数必须等于duration乘fps加2否则校验器报红()` |
@@ -138,7 +138,8 @@ GitHub Actions，`macos-latest`，两步：`swift build` → `swift test`，再�
 | `gh` CLI 的 keyring token 已失效 | `git push` 不受影响；新建远程仓库前需用户跑一次 `gh auth refresh -h github.com`，推送前会先问过用户 |
 | 6 个 demo 工作量为数个工作日 | 按 §9 增量交付，每个 demo 单独 commit 并汇报，随时可叫停 |
 | H.264 fixture 的来源与版权 | 使用自行生成的极短纯色测试码流，不引用任何第三方样片 |
-| 中文测试方法名 | Swift 标识符支持 Unicode，理论上可用；首条红灯测试落地时实测确认，若 XCTest 发现不到则退化为「英文方法名 + 中文注释写论断」 |
+| 中文测试方法名 | 已于 2026-09-23 实测：XCTest 能发现中文方法名，红灯与绿灯均正常，风险关闭 |
+| 文章论断在当前系统上不复现 | 以实测为准，不写会撒谎的测试；差异如实写进 README「实测笔记」。首例：A2「缺空表 AVFoundation 拒绝」在 macOS 26.5.2 不复现 |
 | macOS runner 行为差异 | 首批 demo 全部为纯计算，无硬件依赖；若某测试出现 runner 差异，改为确定性输入而非放宽断言 |
 
 ## 12. 验收标准
