@@ -1,0 +1,12 @@
+# SwiftPM
+.build/
+.swiftpm/
+*.xcodeproj
+Package.resolved
+
+# macOS
+.DS_Store
+
+# 覆盖全局 ~/.gitignore_global 里的 `docs` 规则：
+# 本仓库的 spec 与产物就放在 docs/ 下，必须入库
+!docs/
