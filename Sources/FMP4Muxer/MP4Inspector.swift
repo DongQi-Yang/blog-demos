@@ -78,3 +78,63 @@ public enum MP4Inspector {
         return missing
     }
 }
+
+extension MP4Inspector {
+    public struct TrackFragmentData: Equatable, Sendable {
+        public let trackID: UInt32
+        /// 该 traf 第一个 sample 在文件里的绝对偏移
+        public let dataStart: Int
+        /// 该 traf 所有 sample 的字节数之和
+        public let dataLength: Int
+    }
+
+    /// 按 ISO/IEC 14496-12 §8.8.7 计算一个 moof 里每条 traf 的数据真正落在文件哪里。
+    /// 播放器只信 flags，不信你"以为"的基址：
+    /// - tfhd 带 base-data-offset-present（0x000001）：基址是显式写的 64 位绝对偏移
+    /// - tfhd 带 default-base-is-moof（0x020000）：基址是 moof 第一个字节
+    /// - 都没带：第一条 traf 的基址是 moof 起始，之后每条 traf 的基址是上一条 traf 的数据末尾
+    public static func resolveTrackData(moof: MP4Box) throws -> [TrackFragmentData] {
+        guard moof.type == "moof" else { throw InspectError.missingBox("moof") }
+        var result: [TrackFragmentData] = []
+        var previousEnd: Int?
+        for traf in moof.children("traf") {
+            guard let tfhd = traf.child("tfhd"), let tfhdHeader = tfhd.fullBoxHeader else {
+                throw InspectError.missingBox("tfhd")
+            }
+            guard let trun = traf.child("trun"), let trunHeader = trun.fullBoxHeader else {
+                throw InspectError.missingBox("trun")
+            }
+            guard trunHeader.flags & 0x000200 != 0 else {
+                throw InspectError.unsupported("trun 未携带 sample_size，本读者不回退到 tfhd/trex 默认值")
+            }
+
+            var tfhdReader = ByteReader(tfhd.payload, offset: 4)
+            let trackID = try tfhdReader.u32()
+            let base: Int
+            if tfhdHeader.flags & 0x000001 != 0 {
+                base = Int(try tfhdReader.u64())
+            } else if tfhdHeader.flags & 0x020000 != 0 {
+                base = moof.offset
+            } else {
+                base = previousEnd ?? moof.offset
+            }
+
+            var trunReader = ByteReader(trun.payload, offset: 4)
+            let sampleCount = Int(try trunReader.u32())
+            let dataOffset = trunHeader.flags & 0x000001 != 0 ? Int(try trunReader.i32()) : 0
+            if trunHeader.flags & 0x000004 != 0 { _ = try trunReader.u32() }          // first_sample_flags
+            var length = 0
+            for _ in 0..<sampleCount {
+                if trunHeader.flags & 0x000100 != 0 { _ = try trunReader.u32() }      // duration
+                length += Int(try trunReader.u32())                                   // size（上面已确认存在）
+                if trunHeader.flags & 0x000400 != 0 { _ = try trunReader.u32() }      // flags
+                if trunHeader.flags & 0x000800 != 0 { _ = try trunReader.u32() }      // composition time offset
+            }
+
+            let start = base + dataOffset
+            result.append(TrackFragmentData(trackID: trackID, dataStart: start, dataLength: length))
+            previousEnd = start + length
+        }
+        return result
+    }
+}
