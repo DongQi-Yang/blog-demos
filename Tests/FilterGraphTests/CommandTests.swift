@@ -76,4 +76,13 @@ final class CommandTests: XCTestCase {
             XCTAssertEqual($0 as? UndoError, .targetMissing(nid(7)))
         }
     }
+
+    func test_恢复节点时下游节点已被删除必须报错而不是恢复成少了连线的节点() throws {
+        var graph = try makeGraph([source(1), unary(2)], [edge(1, 2)])
+        let inverse = try Command.removeNode(nid(1)).apply(to: &graph)
+        graph.remove(nid(2))                                          // 有人绕过撤销栈删掉了下游
+        XCTAssertThrowsError(try inverse.apply(to: &graph)) {
+            XCTAssertEqual($0 as? Graph.ConnectError, .unknownPin)
+        }
+    }
 }

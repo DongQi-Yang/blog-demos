@@ -88,23 +88,39 @@ public struct RenderPlan: Equatable, Sendable {
 }
 
 /// 渲染侧持有的「图快照 + 编译产物」。Graph 是值类型，渲染侧拿到的是一份不会再变的值；
-/// 只有结构版本变了才重新编译，参数变化只是换一份快照（原文坑 3、坑 7）。
+/// 只有结构真的变了才重新编译，参数变化只是换一份快照（原文坑 3、坑 7）。
+///
+/// 结构版本号只在同一条编辑历史里单调递增：把图回滚到某个旧值再做另一处结构修改，
+/// 两条分支的版本号可能相同。所以版本号只当快速路径——不同就一定重编译；相同时再比对结构本身。
 public struct RenderState: Sendable {
     public private(set) var graph: Graph
     public private(set) var plan: RenderPlan
     /// 编译次数（可观测性：参数拖动时它不该涨）
     public private(set) var compileCount = 1
+    /// 编出当前 plan 的那张图
+    private var compiledFrom: Graph
 
     public init(_ graph: Graph) {
         self.graph = graph
         self.plan = RenderPlan.compile(graph)
+        self.compiledFrom = graph
     }
 
     public mutating func publish(_ graph: Graph) {
         self.graph = graph
-        if plan.structureVersion != graph.structureVersion {
-            plan = RenderPlan.compile(graph)
-            compileCount += 1
+        guard plan.structureVersion != graph.structureVersion
+                || !Self.sameStructure(compiledFrom, graph) else { return }
+        plan = RenderPlan.compile(graph)
+        compiledFrom = graph
+        compileCount += 1
+    }
+
+    /// 结构 = 节点集合 + 每个节点的 pin + 连线；参数不算。只比较、不分配，拖参数时每帧调用也便宜。
+    static func sameStructure(_ a: Graph, _ b: Graph) -> Bool {
+        guard a.nodes.count == b.nodes.count, a.edges == b.edges else { return false }
+        for (id, node) in a.nodes {
+            guard let other = b.nodes[id], other.inputs == node.inputs, other.outputs == node.outputs else { return false }
         }
+        return true
     }
 }

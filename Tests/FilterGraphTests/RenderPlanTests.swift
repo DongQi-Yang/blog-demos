@@ -70,4 +70,20 @@ final class RenderPlanTests: XCTestCase {
         XCTAssertNil(state.graph.nodes[nid(2)]?.params["radius"])
         XCTAssertNotNil(state.graph.nodes[nid(1)])
     }
+
+    func test_回滚到旧的图值再做另一处结构修改_版本号撞上也必须重编译() throws {
+        // 图是值，"回到某个版本再改"是这套模型鼓励的用法；两条分支的结构版本号可能相同
+        var graph = try makeGraph([source(1), unary(2)], [edge(1, 2)])
+        let saved = graph
+        try graph.insert(unary(3))
+        try graph.connect(edge(2, 3))
+        var state = RenderState(graph)
+        graph = saved
+        try graph.insert(unary(4))
+        try graph.connect(edge(2, 4))
+        XCTAssertEqual(graph.structureVersion, state.plan.structureVersion)   // 版本号确实撞上了
+        state.publish(graph)
+        XCTAssertEqual(state.plan.steps.map(\.node), [nid(1), nid(2), nid(4)])   // 计划必须对应当前的图
+        assertNoLiveSlotConflict(state.plan, graph)
+    }
 }

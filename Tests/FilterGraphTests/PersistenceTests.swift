@@ -54,4 +54,13 @@ final class PersistenceTests: XCTestCase {
         json = json.replacingOccurrences(of: "\"edges\":[", with: "\"edges\":[\(second),")
         XCTAssertThrowsError(try decoder.decode(Graph.self, from: Data(json.utf8)))
     }
+
+    func test_解码恢复存盘时的结构版本号_而不是按重建的次数重新累加() throws {
+        // 删过节点的图：版本号（6）已经不等于"节点数 + 连线数"（3），重建时顺带累加出来的会是 3
+        var graph = try makeGraph([source(1), unary(2), unary(3)], [edge(1, 2), edge(2, 3)])
+        graph.remove(nid(3))
+        XCTAssertEqual(graph.structureVersion, 6)
+        let decoded = try decoder.decode(Graph.self, from: encoder.encode(graph))
+        XCTAssertEqual(decoded.structureVersion, graph.structureVersion)
+    }
 }
