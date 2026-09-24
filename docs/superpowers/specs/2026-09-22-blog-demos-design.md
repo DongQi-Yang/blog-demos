@@ -75,7 +75,7 @@ blog-demos/
 | Demo | 对应文章 | 首条论断测试（名字即论断） |
 |---|---|---|
 | `FMP4Muxer` | [A2 手写 fMP4 muxer](https://juejin.cn/post/7683935700154056713) | `test_单轨能播加上第二条轨就坏_tfhd必须设default_base_is_moof()` |
-| `FilterGraph` | [B1 滤镜图内核](https://juejin.cn/post/7682406523184316454) | `test_成环的连接必须被拒绝而不是在渲染时栈溢出()` |
+| `FilterGraph` | [B1 滤镜图内核](https://juejin.cn/post/7682406523184316454) | `test_成环的连线在connect时就被拒绝_非法的图不进入图()` |
 | `KeyframeTimeline` | [B3 关键帧动画系统](https://juejin.cn/spost/7688246386425118758) | `test_裁剪后区间外关键帧被删除且保留帧的局部时间按speed重算()` |
 | `MaterialProtocol` | [B2 特效素材协议](https://juejin.cn/post/7688180809025110067) | `test_曲线采样数必须等于duration乘fps加2否则校验器报红()` |
 | `ColorRange` | [C2 YUV 颜色范围与矩阵](https://juejin.cn/post/7683133522291441702) | `test_601与709在纯灰阶上逐比特相同所以UI录屏测不出矩阵错配()` |
